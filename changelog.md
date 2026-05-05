@@ -8,6 +8,7 @@ Each row is one change. Test point is N=1000 unless noted. "Δ vs prev" is the a
 | 1 | operation1 = transpose (sequential, [] access) | 300 | 63.554 | -45.8% | ✓ transpose | op1 verified vs ExampleMatrices1. Faster than baseline because op2/op3 still write the smaller transposed result instead of the original src — incidental, not a real speedup. |
 | 2 | Removed file writes from timed path (now behind `-DVERIFY`) | 300 | 0.313 | **-99.5%** | ✓ transpose | I/O was hiding everything. Real algorithm cost finally visible. |
 | 2 | Same change, larger N | 1000 | 8.565 | (new bench size) | ✓ transpose | First useful N=1000 number. From here we benchmark at 1000. |
+| 3 | operation2 = zone_sum (sequential, 3x3 stencil) | 1000 | 10.691 | +24.8% | ✓ transpose, ✓ zone_sum | Op2 now does real work. Cost is 9 reads/cell × N². op3 still dummy. |
 
 ## Per-operation breakdown (after Change 9)
 

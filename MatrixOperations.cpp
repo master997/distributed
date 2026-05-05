@@ -68,11 +68,31 @@ void operation1(std::vector<std::vector<double>> * srcMatrix, std::vector<std::v
             (*dstMatrix)[i][j] = (*srcMatrix)[j][i];
 }
 
+// OPERATION 2 - Zone sum (3x3 stencil).
+// Each destination cell is the sum of the corresponding source cell and
+// every neighbour that exists. So a corner cell sums 4 values, an edge
+// cell sums 6, and an interior cell sums 9. We just bounds-check the
+// neighbour coordinates and skip whatever falls outside the matrix.
+// Sequential here on purpose — we'll add threads in a later change once
+// we know the math is right.
 void operation2(std::vector<std::vector<double>> * srcMatrix, std::vector<std::vector<double>> * dstMatrix)
 {
-    for (int i = 0; i < srcMatrix->size(); i++)
-        for (int j = 0; j < srcMatrix->at(i).size(); j++)
-            dstMatrix->at(i).at(j) = srcMatrix->at(i).at(j);
+    const int N = (int)srcMatrix->size();
+    for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < N; ++j) {
+            double sum = 0.0;
+            for (int di = -1; di <= 1; ++di) {
+                int ni = i + di;
+                if (ni < 0 || ni >= N) continue;
+                for (int dj = -1; dj <= 1; ++dj) {
+                    int nj = j + dj;
+                    if (nj < 0 || nj >= N) continue;
+                    sum += (*srcMatrix)[ni][nj];
+                }
+            }
+            (*dstMatrix)[i][j] = sum;
+        }
+    }
 }
 
 void operation3(std::vector<std::vector<double>> * srcMatrix, std::vector<std::vector<double>> * dstMatrix)
