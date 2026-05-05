@@ -4,6 +4,7 @@
 #include <iostream>
 #include <iomanip>
 #include <algorithm>   // std::fill, std::copy
+#include <chrono>      // per-operation timing for the report
 
 #include "MatrixOperations.h"
 #include "FileWrite.h"
@@ -25,9 +26,36 @@ void matrixOperationsInit(std::vector<std::vector<double>> * srcMatrix, std::vec
         op3Matrix.assign(dim, std::vector<double>(dim));
     }
 
+    // Per-operation profiling (DC-4 lecture: std::chrono::high_resolution_clock).
+    // We sum into static accumulators across all 10 calls so we can print one
+    // average breakdown at the end of the program. The timing calls
+    // themselves cost only a few hundred nanoseconds, well below the noise
+    // floor of any single operation.
+    static double op1_total_ms = 0.0, op2_total_ms = 0.0, op3_total_ms = 0.0;
+    static int    call_count   = 0;
+
+    auto t0 = std::chrono::high_resolution_clock::now();
     operation1(srcMatrix,  &op1Matrix);
+    auto t1 = std::chrono::high_resolution_clock::now();
     operation2(&op1Matrix, &op2Matrix);
+    auto t2 = std::chrono::high_resolution_clock::now();
     operation3(&op2Matrix, &op3Matrix);
+    auto t3 = std::chrono::high_resolution_clock::now();
+
+    op1_total_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
+    op2_total_ms += std::chrono::duration<double, std::milli>(t2 - t1).count();
+    op3_total_ms += std::chrono::duration<double, std::milli>(t3 - t2).count();
+    ++call_count;
+
+    // After the 10th iteration, print the per-op averages once. main.cpp
+    // only loops 10 times, so this fires at the natural end of the run.
+    if (call_count == 10) {
+        std::cerr << "[profile] op1 transpose avg: " << (op1_total_ms / 10.0) << " ms"
+                  << " | op2 zone_sum avg: " << (op2_total_ms / 10.0) << " ms"
+                  << " | op3 matmul avg: "   << (op3_total_ms / 10.0) << " ms"
+                  << "  (total: " << ((op1_total_ms + op2_total_ms + op3_total_ms) / 10.0) << " ms)"
+                  << std::endl;
+    }
 
     // Copy the final result into the destination buffer that main.cpp owns.
     // Using std::copy on contiguous double rows lets the compiler emit a

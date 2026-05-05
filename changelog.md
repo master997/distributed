@@ -14,10 +14,18 @@ Each row is one change. Test point is N=1000 unless noted. "Δ vs prev" is the a
 | 6 | Parallel matmul: 8 threads × row-strips (DC-2 Tut Ex 12a pattern) | 1000 | 56.800 | **-68.8%** | ✓ all three | 3.2x speedup on 8 cores. No mutex needed — each thread writes a disjoint set of dst rows. Below ideal 8x because transpose + zone_sum are still sequential and there's some memory-bandwidth contention between cores. |
 | 7 | Parallel transpose: 8 threads × row-strips | 1000 | 57.005 | +0.4% | ✓ all three | Within noise. Transpose is tiny relative to matmul (~1ms), so thread-spawn overhead matches the gain. Required by spec ("each operation must be parallelised") and counts towards LO2. |
 | 8 | Parallel zone_sum: 8 threads × row-strips | 1000 | 60.154 | +5.5% | ✓ all three | Marginal regression. Zone_sum is ~3-5ms sequentially; spawning 8 threads adds enough overhead to slightly outweigh the parallel work. Will be fixed in Change 10 (thread pool eliminates per-call spawn cost). Excellent material for LO3 trade-off discussion. |
+| 9 | Per-op profiling (chrono, DC-4 lecture pattern) | 1000 | 59.051 | -1.8% | ✓ all three | Profiler call cost is well below noise floor. Per-op averages now visible at end of run. |
 
 ## Per-operation breakdown (after Change 9)
 
-_(populated once Change 9 lands)_
+| Op | N=1000 avg | % of total |
+|----|------------|-----------|
+| op1 (transpose) | 1.36 ms | 2.3% |
+| op2 (zone_sum) | 0.91 ms | 1.6% |
+| **op3 (matmul)** | **55.81 ms** | **96.1%** |
+| total | 58.08 ms | |
+
+Conclusion: matmul dominates. Any further optimisation effort must target op3.
 
 ## Failed experiments (these become trade-off rows in the report)
 
