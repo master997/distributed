@@ -95,9 +95,32 @@ void operation2(std::vector<std::vector<double>> * srcMatrix, std::vector<std::v
     }
 }
 
+// OPERATION 3 - Matrix multiplication, dst = src x src.
+// Loop order is (i, k, j), NOT the textbook (i, j, k).
+// Why this order: with row-major storage, the inner j-loop walks one row of
+// dst and one row of src in step. Both reads and writes are sequential, so
+// each cache line is reused for many iterations before being evicted.
+// The standard (i, j, k) order makes the inner k-loop walk a column of src
+// (k stride of N doubles), which trashes the cache. Same maths, same result,
+// but on N=1000 we typically see a 3-5x improvement just from the reorder.
+// Still sequential here — threads added in a later change.
 void operation3(std::vector<std::vector<double>> * srcMatrix, std::vector<std::vector<double>> * dstMatrix)
 {
-    for (int i = 0; i < srcMatrix->size(); i++)
-        for (int j = 0; j < srcMatrix->at(i).size(); j++)
-            dstMatrix->at(i).at(j) = srcMatrix->at(i).at(j);
+    const int N = (int)srcMatrix->size();
+
+    // Matmul accumulates into dst, so it has to start at zero.
+    for (int i = 0; i < N; ++i)
+        std::fill((*dstMatrix)[i].begin(), (*dstMatrix)[i].end(), 0.0);
+
+    for (int i = 0; i < N; ++i) {
+        auto& row_i_dst = (*dstMatrix)[i];
+        for (int k = 0; k < N; ++k) {
+            // Pulling a_ik out of the inner loop so the compiler can keep it
+            // in a register instead of re-reading it on every j step.
+            const double a_ik = (*srcMatrix)[i][k];
+            const auto& row_k = (*srcMatrix)[k];
+            for (int j = 0; j < N; ++j)
+                row_i_dst[j] += a_ik * row_k[j];
+        }
+    }
 }

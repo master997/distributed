@@ -9,6 +9,7 @@ Each row is one change. Test point is N=1000 unless noted. "Δ vs prev" is the a
 | 2 | Removed file writes from timed path (now behind `-DVERIFY`) | 300 | 0.313 | **-99.5%** | ✓ transpose | I/O was hiding everything. Real algorithm cost finally visible. |
 | 2 | Same change, larger N | 1000 | 8.565 | (new bench size) | ✓ transpose | First useful N=1000 number. From here we benchmark at 1000. |
 | 3 | operation2 = zone_sum (sequential, 3x3 stencil) | 1000 | 10.691 | +24.8% | ✓ transpose, ✓ zone_sum | Op2 now does real work. Cost is 9 reads/cell × N². op3 still dummy. |
+| 4 | operation3 = matmul (i,k,j sequential) | 1000 | 379.158 | +3445% | ✓ all three (examples 1/2/3) | Matmul is N³ — expected jump. We now have a correct, full sequential pipeline. This is the line we parallelise from. |
 
 ## Per-operation breakdown (after Change 9)
 
