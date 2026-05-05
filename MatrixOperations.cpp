@@ -52,20 +52,34 @@ void matrixOperationsInit(std::vector<std::vector<double>> * srcMatrix, std::vec
 #endif
 }
 
-// OPERATION 1 - Matrix transposition.
-// Walks every cell of the source and writes it to the swapped position in the
-// destination, so dst[i][j] becomes src[j][i] (mirror across the diagonal).
-// We do this sequentially first so we can prove correctness against the
-// shipped example matrices before adding any threading on top.
+// OPERATION 1 - Matrix transposition, parallelised by row-strips.
+// Each worker thread fills a contiguous block of dst rows. Transpose only
+// reads from src and only writes to dst, and each thread writes to a
+// disjoint set of rows, so there's no race - no mutex needed (the same
+// safety reasoning as in operation3, from DC-3 lecture).
+// Same row-strip pattern as DC-2 Tutorial Example 12a.
 void operation1(std::vector<std::vector<double>> * srcMatrix, std::vector<std::vector<double>> * dstMatrix)
 {
     const int N = (int)srcMatrix->size();
+    const unsigned int T = std::max(1u, std::thread::hardware_concurrency());
 
-    // Using [] instead of .at() because .at() does a bounds check on every
-    // access. We control the loop bounds here, so the check is wasted work.
-    for (int i = 0; i < N; ++i)
-        for (int j = 0; j < N; ++j)
-            (*dstMatrix)[i][j] = (*srcMatrix)[j][i];
+    auto worker = [srcMatrix, dstMatrix, N](int row_start, int row_end) {
+        for (int i = row_start; i < row_end; ++i)
+            for (int j = 0; j < N; ++j)
+                // Using [] instead of .at() because .at() does a bounds
+                // check we don't need - the loop guarantees we're in range.
+                (*dstMatrix)[i][j] = (*srcMatrix)[j][i];
+    };
+
+    std::vector<std::thread> threads;
+    threads.reserve(T);
+    const int chunk = (N + (int)T - 1) / (int)T;
+    for (unsigned int t = 0; t < T; ++t) {
+        int s = (int)t * chunk;
+        int e = std::min(N, s + chunk);
+        if (s < e) threads.emplace_back(worker, s, e);
+    }
+    for (auto& th : threads) th.join();
 }
 
 // OPERATION 2 - Zone sum (3x3 stencil).
