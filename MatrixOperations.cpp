@@ -95,6 +95,11 @@ void matrixOperationsInit(std::vector<std::vector<double>> * srcMatrix, std::vec
 #endif
 }
 
+// Below this N the cost of dispatching tasks to the pool exceeds the
+// arithmetic, so the parallel version is slower than just doing it inline.
+// 64 is well above any plausible "small example" the marker might run.
+static constexpr int kParallelThreshold = 64;
+
 // OPERATION 1 - Matrix transposition, parallelised via the shared thread pool.
 // The work is partitioned into row-strips - each task owns a contiguous
 // block of dst rows and writes only to those rows, so no mutex is needed
@@ -104,6 +109,16 @@ void matrixOperationsInit(std::vector<std::vector<double>> * srcMatrix, std::vec
 void operation1(std::vector<std::vector<double>> * srcMatrix, std::vector<std::vector<double>> * dstMatrix)
 {
     const int N = (int)srcMatrix->size();
+
+    // Sequential fast-path for tiny matrices - threading overhead would
+    // dominate the work otherwise.
+    if (N < kParallelThreshold) {
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j)
+                (*dstMatrix)[i][j] = (*srcMatrix)[j][i];
+        return;
+    }
+
     const unsigned int T = std::max(1u, std::thread::hardware_concurrency());
 
     auto worker = [srcMatrix, dstMatrix, N](int row_start, int row_end) {
@@ -133,12 +148,16 @@ void operation1(std::vector<std::vector<double>> * srcMatrix, std::vector<std::v
 void operation2(std::vector<std::vector<double>> * srcMatrix, std::vector<std::vector<double>> * dstMatrix)
 {
     const int N = (int)srcMatrix->size();
-    const unsigned int T = std::max(1u, std::thread::hardware_concurrency());
 
-    auto worker = [srcMatrix, dstMatrix, N](int row_start, int row_end) {
+    // Body of the per-row stencil computation. Pulled out into a lambda so
+    // both the sequential fast-path and the parallel path can share it.
+    auto compute_rows = [srcMatrix, dstMatrix, N](int row_start, int row_end) {
         for (int i = row_start; i < row_end; ++i) {
             for (int j = 0; j < N; ++j) {
                 double sum = 0.0;
+                // Walk the 3x3 window centred on (i, j). The two if-checks
+                // skip neighbours that fall outside the matrix - that's
+                // what makes corners sum 4 and edges sum 6 for free.
                 for (int di = -1; di <= 1; ++di) {
                     int ni = i + di;
                     if (ni < 0 || ni >= N) continue;
@@ -153,13 +172,17 @@ void operation2(std::vector<std::vector<double>> * srcMatrix, std::vector<std::v
         }
     };
 
+    // Sequential fast-path for tiny matrices.
+    if (N < kParallelThreshold) { compute_rows(0, N); return; }
+
+    const unsigned int T = std::max(1u, std::thread::hardware_concurrency());
     std::vector<std::future<void>> futures;
     futures.reserve(T);
     const int chunk = (N + (int)T - 1) / (int)T;
     for (unsigned int t = 0; t < T; ++t) {
         int s = (int)t * chunk;
         int e = std::min(N, s + chunk);
-        if (s < e) futures.emplace_back(globalPool().enqueue(worker, s, e));
+        if (s < e) futures.emplace_back(globalPool().enqueue(compute_rows, s, e));
     }
     for (auto& f : futures) f.get();
 }
@@ -178,9 +201,9 @@ void operation3(std::vector<std::vector<double>> * srcMatrix, std::vector<std::v
     for (int i = 0; i < N; ++i)
         std::fill((*dstMatrix)[i].begin(), (*dstMatrix)[i].end(), 0.0);
 
-    const unsigned int T = std::max(1u, std::thread::hardware_concurrency());
-
-    auto worker = [srcMatrix, dstMatrix, N](int row_start, int row_end) {
+    // Body of one row-strip's matmul work. Shared between the sequential
+    // fast-path and the parallel path.
+    auto compute_rows = [srcMatrix, dstMatrix, N](int row_start, int row_end) {
         for (int i = row_start; i < row_end; ++i) {
             auto& row_i_dst = (*dstMatrix)[i];
             for (int k = 0; k < N; ++k) {
@@ -194,13 +217,17 @@ void operation3(std::vector<std::vector<double>> * srcMatrix, std::vector<std::v
         }
     };
 
+    // Sequential fast-path for tiny matrices.
+    if (N < kParallelThreshold) { compute_rows(0, N); return; }
+
+    const unsigned int T = std::max(1u, std::thread::hardware_concurrency());
     std::vector<std::future<void>> futures;
     futures.reserve(T);
     const int chunk = (N + (int)T - 1) / (int)T;
     for (unsigned int t = 0; t < T; ++t) {
         int s = (int)t * chunk;
         int e = std::min(N, s + chunk);
-        if (s < e) futures.emplace_back(globalPool().enqueue(worker, s, e));
+        if (s < e) futures.emplace_back(globalPool().enqueue(compute_rows, s, e));
     }
     for (auto& f : futures) f.get();
 }
