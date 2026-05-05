@@ -44,11 +44,20 @@ void matrixOperationsInit(std::vector<std::vector<double>> * srcMatrix, std::vec
     fileWrite("dstMatrix.txt", dstMatrix);
 }
 
+// OPERATION 1 - Matrix transposition.
+// Walks every cell of the source and writes it to the swapped position in the
+// destination, so dst[i][j] becomes src[j][i] (mirror across the diagonal).
+// We do this sequentially first so we can prove correctness against the
+// shipped example matrices before adding any threading on top.
 void operation1(std::vector<std::vector<double>> * srcMatrix, std::vector<std::vector<double>> * dstMatrix)
 {
-    for (int i = 0; i < srcMatrix->size(); i++)
-        for (int j = 0; j < srcMatrix->at(i).size(); j++)
-            dstMatrix->at(i).at(j) = srcMatrix->at(i).at(j);
+    const int N = (int)srcMatrix->size();
+
+    // Using [] instead of .at() because .at() does a bounds check on every
+    // access. We control the loop bounds here, so the check is wasted work.
+    for (int i = 0; i < N; ++i)
+        for (int j = 0; j < N; ++j)
+            (*dstMatrix)[i][j] = (*srcMatrix)[j][i];
 }
 
 void operation2(std::vector<std::vector<double>> * srcMatrix, std::vector<std::vector<double>> * dstMatrix)
