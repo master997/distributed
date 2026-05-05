@@ -82,31 +82,48 @@ void operation1(std::vector<std::vector<double>> * srcMatrix, std::vector<std::v
     for (auto& th : threads) th.join();
 }
 
-// OPERATION 2 - Zone sum (3x3 stencil).
-// Each destination cell is the sum of the corresponding source cell and
-// every neighbour that exists. So a corner cell sums 4 values, an edge
-// cell sums 6, and an interior cell sums 9. We just bounds-check the
-// neighbour coordinates and skip whatever falls outside the matrix.
-// Sequential here on purpose — we'll add threads in a later change once
-// we know the math is right.
+// OPERATION 2 - Zone sum (3x3 stencil), parallelised by row-strips.
+// Each cell of dst is the sum of the matching src cell and every neighbour
+// that exists - so corners sum 4 values, edges sum 6, interior cells sum 9.
+// Threads each own a contiguous block of dst rows and only read from src,
+// so once again no mutex is needed (DC-3 lecture's safety reasoning).
+// Same row-strip pattern as operations 1 and 3; the unit of work is one row.
 void operation2(std::vector<std::vector<double>> * srcMatrix, std::vector<std::vector<double>> * dstMatrix)
 {
     const int N = (int)srcMatrix->size();
-    for (int i = 0; i < N; ++i) {
-        for (int j = 0; j < N; ++j) {
-            double sum = 0.0;
-            for (int di = -1; di <= 1; ++di) {
-                int ni = i + di;
-                if (ni < 0 || ni >= N) continue;
-                for (int dj = -1; dj <= 1; ++dj) {
-                    int nj = j + dj;
-                    if (nj < 0 || nj >= N) continue;
-                    sum += (*srcMatrix)[ni][nj];
+    const unsigned int T = std::max(1u, std::thread::hardware_concurrency());
+
+    auto worker = [srcMatrix, dstMatrix, N](int row_start, int row_end) {
+        for (int i = row_start; i < row_end; ++i) {
+            for (int j = 0; j < N; ++j) {
+                double sum = 0.0;
+                // Walk the 3x3 window centred on (i, j). The two if-checks
+                // skip neighbours that fall outside the matrix - that's
+                // what makes corners sum 4 and edges sum 6 for free, no
+                // separate corner/edge code paths needed.
+                for (int di = -1; di <= 1; ++di) {
+                    int ni = i + di;
+                    if (ni < 0 || ni >= N) continue;
+                    for (int dj = -1; dj <= 1; ++dj) {
+                        int nj = j + dj;
+                        if (nj < 0 || nj >= N) continue;
+                        sum += (*srcMatrix)[ni][nj];
+                    }
                 }
+                (*dstMatrix)[i][j] = sum;
             }
-            (*dstMatrix)[i][j] = sum;
         }
+    };
+
+    std::vector<std::thread> threads;
+    threads.reserve(T);
+    const int chunk = (N + (int)T - 1) / (int)T;
+    for (unsigned int t = 0; t < T; ++t) {
+        int s = (int)t * chunk;
+        int e = std::min(N, s + chunk);
+        if (s < e) threads.emplace_back(worker, s, e);
     }
+    for (auto& th : threads) th.join();
 }
 
 // OPERATION 3 - Matrix multiplication, dst = src x src, parallelised by row-strips.
