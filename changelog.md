@@ -10,6 +10,7 @@ Each row is one change. Test point is N=1000 unless noted. "Δ vs prev" is the a
 | 2 | Same change, larger N | 1000 | 8.565 | (new bench size) | ✓ transpose | First useful N=1000 number. From here we benchmark at 1000. |
 | 3 | operation2 = zone_sum (sequential, 3x3 stencil) | 1000 | 10.691 | +24.8% | ✓ transpose, ✓ zone_sum | Op2 now does real work. Cost is 9 reads/cell × N². op3 still dummy. |
 | 4 | operation3 = matmul (i,k,j sequential) | 1000 | 379.158 | +3445% | ✓ all three (examples 1/2/3) | Matmul is N³ — expected jump. We now have a correct, full sequential pipeline. This is the line we parallelise from. |
+| 5 | Static intermediate buffers (allocated once, reused 10x) | 1000 | 181.901 | **-52.0%** | ✓ all three | Shipped code re-allocated 24 MB × 3 buffers on every call. Static lifts that out of the timed path. Bigger win than expected — allocator was a real bottleneck. |
 
 ## Per-operation breakdown (after Change 9)
 

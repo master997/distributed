@@ -3,38 +3,38 @@
 #include <thread>
 #include <iostream>
 #include <iomanip>
+#include <algorithm>   // std::fill, std::copy
 
 #include "MatrixOperations.h"
 #include "FileWrite.h"
 
 void matrixOperationsInit(std::vector<std::vector<double>> * srcMatrix, std::vector<std::vector<double>> * dstMatrix)
 {
-    int dim = srcMatrix->size();
+    const int dim = (int)srcMatrix->size();
 
-    std::vector<std::vector<double>> op1Matrix(dim);
-    std::vector<std::vector<double>> op2Matrix(dim);
-    std::vector<std::vector<double>> op3Matrix(dim);
-
-    int cpuCount = std::thread::hardware_concurrency();
-
-    for (int i = 0; i < dim; i++)
-    {
-        op1Matrix[i].resize(dim);
-        op2Matrix[i].resize(dim);
-        op3Matrix[i].resize(dim);
+    // Static intermediate matrices: allocated once, reused on every call.
+    // main.cpp calls this function 10 times in the timing loop. The shipped
+    // version built and destroyed three N x N double matrices per call,
+    // which at N=1000 is around 24 MB of allocation per call - 240 MB
+    // across the 10 timed runs - just to throw it away. By making them
+    // static we pay the cost once for the whole program.
+    static std::vector<std::vector<double>> op1Matrix, op2Matrix, op3Matrix;
+    if ((int)op1Matrix.size() != dim) {
+        op1Matrix.assign(dim, std::vector<double>(dim));
+        op2Matrix.assign(dim, std::vector<double>(dim));
+        op3Matrix.assign(dim, std::vector<double>(dim));
     }
 
-    operation1(srcMatrix, &op1Matrix);
+    operation1(srcMatrix,  &op1Matrix);
     operation2(&op1Matrix, &op2Matrix);
     operation3(&op2Matrix, &op3Matrix);
 
-    for (int i = 0; i < dim; i++)
-    {
-        dstMatrix->at(i).resize(dim);
-        for (int j = 0; j < dim; j++)
-        {
-            dstMatrix->at(i).at(j) = op3Matrix.at(i).at(j);
-        }
+    // Copy the final result into the destination buffer that main.cpp owns.
+    // Using std::copy on contiguous double rows lets the compiler emit a
+    // single memcpy under the hood instead of a per-element loop.
+    for (int i = 0; i < dim; ++i) {
+        if ((int)(*dstMatrix)[i].size() != dim) (*dstMatrix)[i].resize(dim);
+        std::copy(op3Matrix[i].begin(), op3Matrix[i].end(), (*dstMatrix)[i].begin());
     }
 
     // The shipped template wrote five matrices to disk on every call.
