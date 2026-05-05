@@ -6,6 +6,8 @@ Each row is one change. Test point is N=1000 unless noted. "Δ vs prev" is the a
 |---|--------|---|------------|-----------|----------|-------|
 | 0 | Baseline as shipped (3 dummy copy-ops, 5 file writes inside timed path) | 300 | 117.305 | — | N/A | All time is file I/O. Real algorithm cost is hidden. |
 | 1 | operation1 = transpose (sequential, [] access) | 300 | 63.554 | -45.8% | ✓ transpose | op1 verified vs ExampleMatrices1. Faster than baseline because op2/op3 still write the smaller transposed result instead of the original src — incidental, not a real speedup. |
+| 2 | Removed file writes from timed path (now behind `-DVERIFY`) | 300 | 0.313 | **-99.5%** | ✓ transpose | I/O was hiding everything. Real algorithm cost finally visible. |
+| 2 | Same change, larger N | 1000 | 8.565 | (new bench size) | ✓ transpose | First useful N=1000 number. From here we benchmark at 1000. |
 
 ## Per-operation breakdown (after Change 9)
 

@@ -37,11 +37,19 @@ void matrixOperationsInit(std::vector<std::vector<double>> * srcMatrix, std::vec
         }
     }
 
+    // The shipped template wrote five matrices to disk on every call.
+    // That meant the timed loop in main.cpp was measuring file I/O instead
+    // of our algorithm, and the spec explicitly tells us to "remove any
+    // debug printing". They're behind VERIFY now: when we want to inspect
+    // the intermediate matrices we re-build with -DVERIFY, otherwise they
+    // never run during the assessed timed loop.
+#ifdef VERIFY
     fileWrite("srcMatrix.txt", srcMatrix);
     fileWrite("op1Matrix.txt", &op1Matrix);
     fileWrite("op2Matrix.txt", &op2Matrix);
     fileWrite("op3Matrix.txt", &op3Matrix);
     fileWrite("dstMatrix.txt", dstMatrix);
+#endif
 }
 
 // OPERATION 1 - Matrix transposition.
